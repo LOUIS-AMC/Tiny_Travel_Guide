@@ -6,7 +6,6 @@ import os
 import sys
 import urllib.error
 import urllib.request
-import ollama
 
 def check_ollama(host: str | None = None, timeout: int = 5) -> int:
     """
@@ -38,13 +37,4 @@ def check_ollama(host: str | None = None, timeout: int = 5) -> int:
 
 
 if __name__ == "__main__":
-        DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "hf.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF")
-        prompt = "Tell me about San Francisco"
-        chosen_model = DEFAULT_MODEL
-        response = ollama.chat(
-            model=chosen_model,
-            messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0.2},
-        )
-
-        print(response['message']['content'])
+        check_ollama()
