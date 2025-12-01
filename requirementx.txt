@@ -1,0 +1,8 @@
+numpy
+pandas
+geopandas
+pyproj
+shapely
+ollama
+fiona
+openpyxl
