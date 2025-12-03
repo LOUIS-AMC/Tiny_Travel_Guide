@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from llm_client import chat_with_model
-from rag import TravelData, build_context, normalize_boroughs
+from rag import BOROUGH_ALIASES, TravelData, build_context, normalize_boroughs
 
 
 def _prompt_days() -> int:
@@ -20,23 +20,37 @@ def _prompt_days() -> int:
 
 
 def _prompt_boroughs() -> List[str]:
-    raw = input(
-        "Which boroughs would you like to explore (Manhanttan, Brooklyn, Staten Island, Bronx, Queens)? (comma separated or 'all'): "
-    ).strip()
-    if not raw or raw.lower() == "all":
-        return []
-    parts = [p.strip() for p in raw.split(",")]
-    boros = normalize_boroughs(parts)
-    if not boros:
-        print("No valid boroughs detected; defaulting to all.")
-    return boros
+    valid_inputs = {
+        *{k.lower() for k in BOROUGH_ALIASES.keys()},
+        *{v.lower() for v in BOROUGH_ALIASES.values()},
+    }
+    prompt = (
+        "Which boroughs would you like to explore (Manhattan, Brooklyn, Staten Island, Bronx, Queens)? "
+        "(comma separated or 'all'): "
+    )
+    while True:
+        raw = input(prompt).strip()
+        if not raw or raw.lower() == "all":
+            return []
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        invalid = [p for p in parts if p.lower() not in valid_inputs]
+        if invalid:
+            print("Please enter only valid boroughs: Manhattan, Brooklyn, Queens, Bronx, Staten Island (or 'all').")
+            continue
+        boros = normalize_boroughs(parts)
+        if boros:
+            return boros
+        print("No valid boroughs detected; please try again or enter 'all'.")
 
 
 def _prompt_budget() -> str:
-    raw = input("Trip budget? (low/medium/high) [medium]: ").strip().lower()
-    if raw not in {"low", "medium", "high"}:
-        return "medium"
-    return raw
+    allowed = {"low", "medium", "high"}
+    prompt = "Trip budget? (low/medium/high): "
+    while True:
+        raw = input(prompt).strip().lower()
+        if raw in allowed:
+            return raw
+        print("Please enter one of: low, medium, or high.")
 
 
 def _build_prompt(context: str, days: int, boros: List[str], budget: str) -> str:

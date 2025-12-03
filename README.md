@@ -7,20 +7,21 @@ Local LLM-powered generator that builds morning/noon/evening itineraries for 1â€
 - NYC datasets downloaded to paths referenced in `.env` (see below)
 
 ## Quick Start
-1) Install Python deps and pull the model:
+1) Install Ollama (https://ollama.com/download) so the `ollama` CLI is available.
+2) Install Python deps and pull the model:
 ```bash
 make setup          # installs requirements.txt and pulls the Ollama model
 ```
-2) Add a `.env` file (see template below) pointing to your data files and preferred model.
-3) Generate cleaned datasets (writes into `cleaned_data/`):
+3) Add a `.env` file (see template below) pointing to your data files and preferred model.
+4) Generate cleaned datasets (writes into `cleaned_data/`):
 ```bash
 python data/generate_dataset.py
 ```
-4) Optional: verify Ollama connectivity:
+5) Optional: verify Ollama connectivity:
 ```bash
 python scripts/test_ollama.py
 ```
-5) Generate an itinerary:
+6) Generate an itinerary:
 ```bash
 python scripts/app.py
 ```
