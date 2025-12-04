@@ -105,8 +105,8 @@ class TravelData:
             low, high = price_range
             df = df[(df["high_rate"] >= low) & (df["high_rate"] < high)]
         df = df.sort_values(
-            ["star_rating", "high_rate", "low_rate"],
-            ascending=[False, True, True],
+            ["BoroName", "star_rating", "high_rate", "low_rate"],
+            ascending=[True, False, True, True],
             na_position="last",
         )
         if len(df) > limit:
@@ -161,6 +161,11 @@ class TravelData:
             df = df.drop_duplicates(subset=["Tourist_Spot"])
         if len(df) > limit:
             df = df.sample(n=limit, random_state=None)
+        df = df.sort_values(
+            ["BoroName", "Region", "Tourist_Spot"],
+            ascending=[True, True, True],
+            na_position="last",
+        )
         embedder = self.embedder
         if embedder:
             try:
@@ -188,7 +193,11 @@ class TravelData:
         if "Name" in df.columns:
             df = df.drop_duplicates(subset=["Name"])
         if "Rating" in df.columns:
-            df = df.sort_values("Rating", ascending=False, na_position="last")
+            df = df.sort_values(
+                ["BoroName", "Rating"],
+                ascending=[True, False],
+                na_position="last",
+            )
         if len(df) > limit:
             df = df.head(limit)
         cols = [
@@ -252,7 +261,12 @@ class TravelData:
 
 
 def build_context(
-    boros: List[str], budget: str, days: int, data: TravelData
+    boros: List[str],
+    budget: str,
+    days: int,
+    data: TravelData,
+    season: Optional[str] = None,
+    pace: Optional[str] = None,
 ) -> str:
     """Create a concise context block for the LLM prompt."""
     hotels = data.hotels_for_budget(boros, budget, limit=6)
@@ -265,10 +279,12 @@ def build_context(
 
     chosen_boros = ", ".join(boros) if boros else "All boroughs"
     budget_text = budget or "medium"
+    season_text = season or "unspecified"
+    pace_text = pace or "balanced"
 
     return (
-        f"Traveler request: {days} day(s) in NYC, boroughs: {chosen_boros}, budget: {budget_text}.\n"
-        f"Hotels filtered by borough and budget (pick ONE as a home base for the whole trip):\n{hotel_text}\n\n"
-        f"Attractions to pull from (with addresses; use each attraction at most once):\n{attraction_text}\n\n"
-        f"Restaurants to mix in (name + rating + address; keep these near daily attractions):\n{restaurant_text}\n"
+        f"Traveler request: {days} day(s) in NYC, boroughs: {chosen_boros}, budget: {budget_text}, season/month: {season_text}, travel pace: {pace_text}.\n"
+        f"Hotels filtered by borough and budget (pick ONE as a home base for the whole trip; each line includes BoroName):\n{hotel_text}\n\n"
+        f"Attractions to pull from (grouped by borough/region; use each attraction at most once; BoroName shown on each line):\n{attraction_text}\n\n"
+        f"Restaurants to mix in (sorted by borough, highest-rated first; only use restaurants whose BoroName matches the day's borough):\n{restaurant_text}\n"
     )
