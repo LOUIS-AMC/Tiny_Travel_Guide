@@ -6,6 +6,8 @@ from typing import Iterable, List, Optional
 
 import pandas as pd
 
+from embedding_store import EmbeddingClient, top_k_by_embedding
+
 # Supported borough names and simple aliases for user input.
 BOROUGH_ALIASES = {
     "manhattan": "Manhattan",
@@ -17,11 +19,11 @@ BOROUGH_ALIASES = {
     "statenisland": "Staten Island",
 }
 
-# Map budget buckets to hotel star rating ranges.
-BUDGET_TO_STARS = {
-    "low": (1, 2),
-    "medium": (2, 3),
-    "high": (3, 4),
+# Map budget buckets to nightly high_rate ranges (USD).
+BUDGET_TO_PRICE = {
+    "low": (0, 100),
+    "medium": (100, 300),
+    "high": (300, float("inf")),
 }
 
 
@@ -47,12 +49,27 @@ def normalize_boroughs(raw_boros: Iterable[str]) -> List[str]:
 class TravelData:
     """Loads and slices NYC attraction, restaurant, and hotel data."""
 
-    def __init__(self, data_dir: Optional[Path] = None) -> None:
+    def __init__(self, data_dir: Optional[Path] = None, use_embeddings: bool = True) -> None:
         base_dir = Path(__file__).resolve().parents[1]
         self.data_dir = data_dir or base_dir / "cleaned_data"
         self.attractions = self._load_csv("nyc_attractions.csv")
         self.restaurants = self._load_csv("nyc_restaurants.csv")
         self.hotels = self._load_csv("nyc_hotel_encoded.csv")
+        self.use_embeddings = use_embeddings
+        self._embedder: Optional[EmbeddingClient] = None
+
+    @property
+    def embedder(self) -> Optional[EmbeddingClient]:
+        if not self.use_embeddings:
+            return None
+        if self._embedder is None:
+            try:
+                self._embedder = EmbeddingClient()
+            except Exception:
+                # If embedding setup fails, fall back to non-embedding flow.
+                print("Failed")
+                self._embedder = None
+        return self._embedder
 
     def _load_csv(self, name: str) -> pd.DataFrame:
         path = self.data_dir / name
@@ -74,31 +91,129 @@ class TravelData:
         self, boros: List[str], budget: str, limit: int = 5
     ) -> pd.DataFrame:
         df = self._filter_boros(self.hotels, boros)
-        rating_range = BUDGET_TO_STARS.get((budget or "").lower())
-        if rating_range:
-            low, high = rating_range
-            df = df[df["star_rating"].between(low, high, inclusive="both")]
+        budget_key = (budget or "").lower()
+
+        # Ensure rates are numeric for filtering.
+        for col in ("high_rate", "low_rate"):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        if "budget_tier" in df.columns:
+            df = df[df["budget_tier"] == budget_key]
+        price_range = BUDGET_TO_PRICE.get(budget_key)
+        if price_range and "high_rate" in df.columns:
+            low, high = price_range
+            df = df[(df["high_rate"] >= low) & (df["high_rate"] < high)]
         df = df.sort_values(
             ["star_rating", "high_rate", "low_rate"],
             ascending=[False, True, True],
             na_position="last",
         )
         if len(df) > limit:
-            df = df.head(limit)
+            # Keep a top slice for quality, then sample for variety.
+            top_slice = df.head(limit * 3)
+            df = top_slice.sample(n=limit, random_state=None)
+
+        cols = [
+            c
+            for c in [
+                "name",
+                "address1",
+                "city",
+                "state_province",
+                "postal_code",
+                "latitude",
+                "longitude",
+                "star_rating",
+                "high_rate",
+                "low_rate",
+                "BoroName",
+            ]
+            if c in df.columns
+        ]
+        df = df[cols]
+
+        embedder = self.embedder
+        if embedder:
+            try:
+                texts = [
+                    " | ".join(
+                        str(row.get(col, ""))
+                        for col in ["name", "address1", "city", "star_rating", "BoroName"]
+                        if col in df.columns
+                    )
+                    for _, row in df.iterrows()
+                ]
+                idxs = top_k_by_embedding(
+                    query=f"hotel options for {', '.join(boros) or 'all boroughs'} in NYC at {budget or 'medium'} budget",
+                    items=texts,
+                    embedder=embedder,
+                    k=min(limit, len(texts)),
+                )
+                df = df.iloc[idxs]
+            except Exception:
+                pass
         return df
 
     def pick_attractions(self, boros: List[str], limit: int = 12) -> pd.DataFrame:
         df = self._filter_boros(self.attractions, boros)
+        if "Tourist_Spot" in df.columns:
+            df = df.drop_duplicates(subset=["Tourist_Spot"])
         if len(df) > limit:
-            df = df.sample(n=limit, random_state=42)
+            df = df.sample(n=limit, random_state=None)
+        embedder = self.embedder
+        if embedder:
+            try:
+                texts = [
+                    " | ".join(
+                        str(row.get(col, ""))
+                        for col in ["Tourist_Spot", "Address", "Region", "BoroName"]
+                        if col in df.columns
+                    )
+                    for _, row in df.iterrows()
+                ]
+                idxs = top_k_by_embedding(
+                    query=f"NYC attractions clustered per borough: {', '.join(boros) or 'all boroughs'}",
+                    items=texts,
+                    embedder=embedder,
+                    k=min(limit, len(texts)),
+                )
+                df = df.iloc[idxs]
+            except Exception:
+                pass
         return df
 
     def pick_restaurants(self, boros: List[str], limit: int = 10) -> pd.DataFrame:
         df = self._filter_boros(self.restaurants, boros)
+        if "Name" in df.columns:
+            df = df.drop_duplicates(subset=["Name"])
         if "Rating" in df.columns:
             df = df.sort_values("Rating", ascending=False, na_position="last")
         if len(df) > limit:
             df = df.head(limit)
+        cols = [
+            c
+            for c in ["Name", "Rating", "Address", "latitude", "longitude", "ZipCode", "BoroName"]
+            if c in df.columns
+        ]
+        df = df[cols]
+
+        embedder = self.embedder
+        if embedder:
+            try:
+                texts = [
+                    " | ".join(str(row.get(col, "")) for col in df.columns)
+                    for _, row in df.iterrows()
+                ]
+                idxs = top_k_by_embedding(
+                    query=f"NYC trip food near attractions in {', '.join(boros) or 'all boroughs'}",
+                    items=texts,
+                    embedder=embedder,
+                    k=min(limit, len(texts)),
+                )
+                df = df.iloc[idxs]
+            except Exception:
+                pass
         return df
 
     def format_hotels(self, df: pd.DataFrame) -> str:
@@ -128,13 +243,11 @@ class TravelData:
         lines = []
         for _, row in df.iterrows():
             name = row.get("Name", "")
-            rating = row.get("Rating", "")
-            price = row.get("Price Category", "")
-            cuisine = row.get("Detailed Ratings", "")
             boro = row.get("BoroName", "")
-            lines.append(
-                f"- {name} ({boro}) | rating {rating} | {price} | {cuisine}"
-            )
+            rating = row.get("Rating", "")
+            addr = row.get("Address", "")
+            addr_text = f" | {addr}" if addr else ""
+            lines.append(f"- {name} ({boro}) | rating {rating}{addr_text}")
         return "\n".join(lines)
 
 
@@ -143,8 +256,8 @@ def build_context(
 ) -> str:
     """Create a concise context block for the LLM prompt."""
     hotels = data.hotels_for_budget(boros, budget, limit=6)
-    attractions = data.pick_attractions(boros, limit=18)
-    restaurants = data.pick_restaurants(boros, limit=18)
+    attractions = data.pick_attractions(boros, limit=max(days * 3, 18))
+    restaurants = data.pick_restaurants(boros, limit=max(days * 3, 18))
 
     hotel_text = data.format_hotels(hotels) or "- No matching hotels; suggest reasonable options."
     attraction_text = data.format_attractions(attractions) or "- No attractions found; suggest iconic sights."
@@ -155,7 +268,7 @@ def build_context(
 
     return (
         f"Traveler request: {days} day(s) in NYC, boroughs: {chosen_boros}, budget: {budget_text}.\n"
-        f"Hotels filtered by borough and budget:\n{hotel_text}\n\n"
-        f"Attractions to pull from:\n{attraction_text}\n\n"
-        f"Restaurants to mix in:\n{restaurant_text}\n"
+        f"Hotels filtered by borough and budget (pick ONE as a home base for the whole trip):\n{hotel_text}\n\n"
+        f"Attractions to pull from (with addresses; use each attraction at most once):\n{attraction_text}\n\n"
+        f"Restaurants to mix in (name + rating + address; keep these near daily attractions):\n{restaurant_text}\n"
     )

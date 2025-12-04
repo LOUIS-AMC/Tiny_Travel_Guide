@@ -8,20 +8,24 @@ Local LLM-powered generator that builds morning/noon/evening itineraries for 1â€
 
 ## Quick Start
 1) Install Ollama (https://ollama.com/download) so the `ollama` CLI is available.
-2) Install Python deps and pull the model:
+2) Install Python deps and pull the chat model:
 ```bash
 make setup          # installs requirements.txt and pulls the Ollama model
 ```
-3) Add a `.env` file (see template below) pointing to your data files and preferred model.
-4) Generate cleaned datasets (writes into `cleaned_data/`):
+3) Pull the embedding model used for reranking (needed for fewer repeats):
+```bash
+ollama pull hf.co/CompendiumLabs/bge-base-en-v1.5-gguf:latest
+```
+4) Add a `.env` file (see template below) pointing to your data files and preferred models.
+5) Generate cleaned datasets (writes into `cleaned_data/`):
 ```bash
 python data/generate_dataset.py
 ```
-5) Optional: verify Ollama connectivity:
+6) Optional: verify Ollama connectivity:
 ```bash
 python scripts/test_ollama.py
 ```
-6) Generate an itinerary:
+7) Generate an itinerary:
 ```bash
 python scripts/app.py
 ```
@@ -34,6 +38,7 @@ NYC_BOURUGH_COORDS=/path/to/nybb.shp
 NYC_ATTRACTIONS_PATH=/path/to/New_York_Tourist_Locations.xlsx
 NYC_RESTAURANTS_PATH=/path/to/google_maps_restaurants(cleaned).csv
 OLLAMA_MODEL=hf.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF
+OLLAMA_EMBED_MODEL=hf.co/CompendiumLabs/bge-base-en-v1.5-gguf:latest
 ```
 
 ## Data sources

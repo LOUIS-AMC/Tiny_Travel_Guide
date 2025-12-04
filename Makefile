@@ -5,7 +5,11 @@ MODEL_DEFAULT := hf.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF
 MODEL_FROM_ENV := $(shell grep -E '^OLLAMA_MODEL=' .env 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d "\"'")
 MODEL ?= $(MODEL_FROM_ENV)
 
-.PHONY: install pull-model setup
+EMBED_MODEL_DEFAULT := hf.co/CompendiumLabs/bge-base-en-v1.5-gguf:latest
+EMBED_MODEL_FROM_ENV := $(shell grep -E '^OLLAMA_EMBED_MODEL=' .env 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d "\"'")
+EMBED_MODEL ?= $(EMBED_MODEL_FROM_ENV)
+
+.PHONY: install pull-model pull-embed-model setup
 
 install:
 	$(PIP) install -r requirements.txt
@@ -19,5 +23,14 @@ pull-model:
 	echo "Pulling Ollama model $$model"; \
 	ollama pull "$$model"
 
-setup: install pull-model
+pull-embed-model:
+	@model="$(EMBED_MODEL)"; \
+	if [ -z "$$model" ]; then \
+		model="$(EMBED_MODEL_DEFAULT)"; \
+		echo "EMBED_MODEL not set; defaulting to $$model"; \
+	fi; \
+	echo "Pulling Ollama embedding model $$model"; \
+	ollama pull "$$model"
+
+setup: install pull-model pull-embed-model
 	@echo "Environment ready. Add/update .env if needed."

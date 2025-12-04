@@ -70,6 +70,9 @@ def generate_nyc_hotel_dataset(
 
     # 1) Load hotels
     hotels = pd.read_csv(hotel_csv_path, encoding="latin1")
+    # Normalize rate columns to numeric
+    hotels["high_rate"] = pd.to_numeric(hotels.get("high_rate"), errors="coerce")
+    hotels["low_rate"] = pd.to_numeric(hotels.get("low_rate"), errors="coerce")
 
     # 2) Load borough shapes + transformer
     borough_shapes, transformer = load_borough_shapes_and_transformer(borough_shp_path)
@@ -83,7 +86,24 @@ def generate_nyc_hotel_dataset(
     # 4) Filter to only hotels inside NYC (one of the 5 boroughs)
     nyc_hotels = hotels[hotels["BoroName"].notna()].copy()
 
-    # 5) Save
+    # 5) Drop zero/invalid rates to avoid unusable entries
+    nyc_hotels = nyc_hotels[
+        (nyc_hotels["high_rate"] > 0) & (nyc_hotels["low_rate"] > 0)
+    ].copy()
+
+    # 6) Budget tier derived from high_rate
+    def _budget_tier(rate: float | int | None) -> str | None:
+        if pd.isna(rate):
+            return None
+        if rate < 100:
+            return "low"
+        if rate < 300:
+            return "medium"
+        return "high"
+
+    nyc_hotels["budget_tier"] = nyc_hotels["high_rate"].apply(_budget_tier)
+
+    # 7) Save
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     nyc_hotels.to_csv(output_path, index=False)
 
