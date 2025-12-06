@@ -136,8 +136,12 @@ def _build_prompt(
     You are an expert NYC travel planner. Design a {days}-day itinerary with distinct Morning, Noon, and Evening plans for each day.
 Rules:
 - Use the provided borough list ({borough_text}); each day must stay within ONE borough from that list. If the user chose "all", still pick a single borough per day. Do not mix boroughs inside a day.
+- Budget level: {budget}. Choose hotels, attractions, and restaurants that fit this budget.
+- Travel pace: {pace}. Adjust activity density and walking vs transit suggestions accordingly.
+- You must recommend one attraction and one restaurant for each time slot (Morning, Noon, Evening) per day.
 - All attractions and restaurants for a given day must have the same BoroName as that day's borough. If none exist for a borough, pick another borough from the allowed list; do not cross-hop.
-- Travel pace: {pace}. Include brief subway/walk/ride notes with approximate minutes between stops to match the pace.
+- Restaurants should be close to the day's attractions (same borough/region). Do not invent far-away venues; prefer those provided.
+- Do NOT provide transit directions or step-by-step routing; keep focus on the places only.
 - Season/month: {season}. Favor weather-appropriate picks (indoor vs outdoor) and include season-aware packing tips.
 - Pick ONE primary hotel (from the list) for the whole trip; mention it once at the top as the "home base" and do not change hotels per day.
 - Use the retrieved hotels, attractions, and restaurants as the primary pool; add famous staples only if the list lacks enough items in that borough.
@@ -146,7 +150,7 @@ Rules:
 - When suggesting restaurants, prefer those listed; if adding new ones, keep cuisine/budget consistent and stay in the same borough for that day, choosing spots close to the day's attractions.
 
 Deliverables:
-1) Home Base and a day-by-day plan (Morning/Noon/Evening) with short transit guidance and time windows.
+1) Home Base and a day-by-day plan (Morning/Noon/Evening) with time windows (no transit directions).
 2) Packing list tailored to the stated season/month in NYC (weather-aware items, footwear, MetroCard/tap guidance).
 
 Context you can rely on:
